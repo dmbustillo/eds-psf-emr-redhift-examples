@@ -1,0 +1,200 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+
+  pSubnetId:
+    Type: String
+    Description: The subnet where the cluster goes
+    Default: subnet-0506379449d5e6e36
+
+  pInstanceType:
+    Type: String
+    Description: The instance type
+    Default: m4.large
+
+  pReleaseLabel:
+    Type: String
+    Description: The Release label.
+    Default: emr-5.19.0
+
+  pAdditionalMasterSecurityGroup:
+    Type: String
+    Description: The VPC Private security group
+    Default: sg-03c217fb8cb9b8959
+
+  pEc2KeyName:
+    Type: String
+    Default: dba_key
+
+  pDataLakeLogsBucketName:
+    Type: String
+    Default: connect-jsd-datalake-logs
+
+  pDataLakeTestBucketName:
+    Type: String
+    Default: connect-jsd-datalake-test
+
+Resources:
+
+  rConnectEMR:
+    Type: AWS::EMR::Cluster
+    Properties:
+      Instances:
+#        MasterInstanceGroup:
+#          InstanceCount: 1
+#          InstanceType: !Ref pInstanceType
+#          Market: ON_DEMAND
+#          Name: cfnMaster
+        MasterInstanceFleet:
+          InstanceTypeConfigs:
+            - InstanceType: !Ref pInstanceType
+#          LaunchSpecifications:
+#            SpotSpecification:
+#              TimeoutDurationMinutes: 20
+#              TimeoutAction: SWITCH_TO_ON_DEMAND
+          Name: MasterInstanceFleet
+          TargetOnDemandCapacity: 1
+        CoreInstanceFleet:
+          InstanceTypeConfigs:
+            - InstanceType: !Ref pInstanceType
+              BidPriceAsPercentageOfOnDemandPrice: 50
+          LaunchSpecifications:
+            SpotSpecification:
+              TimeoutDurationMinutes: 20
+              TimeoutAction: SWITCH_TO_ON_DEMAND
+          Name: CoreInstanceFleet
+          #TargetOnDemandCapacity: Integer
+          TargetSpotCapacity: 2
+#        CoreInstanceGroup:
+#          InstanceCount: 2
+#          InstanceType: !Ref pInstanceType
+#          Market: ON_DEMAND
+#          Name: cfnCore
+        Ec2SubnetId: !Ref pSubnetId
+        AdditionalMasterSecurityGroups:
+          - !Ref pAdditionalMasterSecurityGroup
+        Ec2KeyName: !Ref pEc2KeyName
+      Name: ConnectEMRCluster
+      JobFlowRole: !Ref rEmrEc2InstanceProfile
+      ServiceRole: !Ref rEmrRole
+      ReleaseLabel: !Ref pReleaseLabel
+      Applications:
+        - Name: Hive
+        - Name: Presto
+        - Name: Spark
+        - Name: Tez
+        - Name: Hadoop
+        - Name: Hue
+        - Name: Ganglia
+        - Name: Zeppelin
+      Configurations:
+        - Classification: zeppelin-env
+          Configurations:
+            - Classification: export
+              ConfigurationProperties:
+                ZEPPELIN_NOTEBOOK_S3_BUCKET: connect-jsd-datalake-notebooks
+                ZEPPELIN_NOTEBOOK_STORAGE: org.apache.zeppelin.notebook.repo.S3NotebookRepo
+                ZEPPELIN_NOTEBOOK_USER: hadoop
+                #SPARK_SUBMIT_OPTIONS: '"$SPARK_SUBMIT_OPTIONS --packages org.apache.spark:spark-streaming-kinesis-asl_2.10:1.6.0 --conf spark.executorEnv.PYTHONPATH=/usr/lib/spark/python/lib/py4j-0.9-src.zip:/usr/lib/spark/python/:<CPS>{{PWD}}/pyspark.zip<{{PWD}}>/py4j-0.9-src.zip --conf spark.yarn.isPython=true"'
+                #SPARK_SUBMIT_OPTIONS: '"--packages org.apache.spark:spark-streaming-kinesis-asl_2.11:2.3.2 --jars /usr/share/java/Hive-JSON-Serde/hive-openx-serde.jar --conf spark.executorEnv.PYTHONPATH=/usr/lib/spark/python/lib/py4j-0.10.7-src.zip:/usr/lib/spark/python/:{{PWD}}/pyspark.zip:{{PWD}}/py4j-0.10.7-src.zip --conf spark.yarn.isPython=true $SPARK_SUBMIT_OPTIONS"'
+                SPARK_SUBMIT_OPTIONS: '"--jars /usr/lib/spark/external/lib/spark-streaming-kinesis-asl-assembly.jar,/usr/share/java/Hive-JSON-Serde/hive-openx-serde.jar,/usr/share/aws/emr/ddb/lib/emr-dynamodb-hadoop-4.7.0.jar,/usr/lib/spark/jars/jackson-databind-2.6.7.1.jar --conf spark.executorEnv.PYTHONPATH=/usr/lib/spark/python/lib/py4j-0.10.7-src.zip:/usr/lib/spark/python/:{{PWD}}/pyspark.zip:{{PWD}}/py4j-0.10.7-src.zip --conf spark.yarn.isPython=true $SPARK_SUBMIT_OPTIONS"'
+                #SPARK_SUBMIT_OPTIONS: '"$SPARK_SUBMIT_OPTIONS --packages org.apache.spark:spark-streaming-kinesis-asl_2.11:2.3.2 --conf spark.executorEnv.PYTHONPATH=/usr/lib/spark/python/lib/py4j-0.10.7-src.zip:/usr/lib/spark/python/:{{PWD}}/pyspark.zip:{{PWD}}/py4j-0.10.7-src.zip --conf spark.yarn.isPython=true"'
+                #SPARK_SUBMIT_OPTIONS: '"$SPARK_SUBMIT_OPTIONS --packages org.apache.spark:spark-streaming-kinesis-asl_2.11:2.3.2 --conf spark.executorEnv.PYTHONPATH=/usr/lib/spark/python/lib/py4j-0.10.7-src.zip:/usr/lib/spark/python/:/usr/lib/spark/python/lib/pyspark.zip --conf spark.yarn.isPython=true"'
+#                SPARK_SUBMIT_OPTIONS: '"$SPARK_SUBMIT_OPTIONS --jars /usr/lib/spark/external/lib/spark-streaming-kinesis-asl-assembly_2.11-2.3.2.jar --conf spark.executorEnv.PYTHONPATH=/usr/lib/spark/python/lib/py4j-0.10.7-src.zip:/usr/lib/spark/python/:/usr/lib/spark/python/lib/pyspark.zip --conf spark.yarn.isPython=true"'
+#                SPARK_SUBMIT_OPTIONS: '"--packages org.apache.spark:spark-streaming-kinesis-asl_2.11:2.3.2"'
+        - Classification: hive-site
+          ConfigurationProperties:
+            hive.metastore.client.factory.class: com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory
+        - Classification: spark
+          ConfigurationProperties:
+            maximizeResourceAllocation: true
+        - Classification: presto-connector-hive
+          ConfigurationProperties:
+            hive.metastore.glue.datacatalog.enabled: true
+        - Classification: spark-hive-site
+          ConfigurationProperties:
+            hive.metastore.client.factory.class: com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory
+#        - Classification: zeppelin-site
+#          ConfigurationProperties:
+#            zeppelin.notebook.s3.bucket: zeppelin-notebooks
+#      SecurityConfiguration: !Ref pSecurityConfiguration
+      BootstrapActions:
+#        - Name: Install Jupyter notebook
+#          ScriptBootstrapAction:
+#            Args: [--r,--julia,--toree,--torch,--ruby,--ds-packages,--ml-packages,--python-packages,'ggplot nilearn',--port,8885,--password,jupyter,--jupyterhub,--jupyterhub-port,8005,--cached-install,--notebook-dir,'s3://connect-jsd-datalake-test/notebooks/',--copy-samples]
+#            Path: s3://aws-bigdata-blog/artifacts/aws-blog-emr-jupyter/install-jupyter-emr5.sh
+#            Path: s3://connect-jsd-datalake-test/artifacts/install-jupyter-emr5.sh
+        - Name: Set stderr and stdout
+          ScriptBootstrapAction:
+            Path: s3://connect-jsd-datalake-config/emr/std.sh
+#        - Name: Install boto3
+#          ScriptBootstrapAction:
+#            Path: s3://connect-jsd-datalake-config/emr/boto3.sh
+      LogUri: s3://connect-jsd-datalake-logs
+      VisibleToAllUsers: true
+      Tags:
+        - Key: stage
+          Value: dev
+
+  rEmrRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2008-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: elasticmapreduce.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceRole'
+
+  rEmrEc2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2008-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - s3:*
+            Effect: Allow
+            Resource:
+              - !Join [':',['arm','aws','s3','','', !Ref pDataLakeLogsBucketName ]]
+              - !Join [':',['arm','aws','s3','','', !Join ['/', [!Ref pDataLakeLogsBucketName,'*' ]]]]
+              - !Join [':',['arm','aws','s3','','', !Ref pDataLakeTestBucketName ]]
+              - !Join [':',['arm','aws','s3','','', !Join ['/', [!Ref pDataLakeTestBucketName,'*' ]]]]
+            Sid: AllowAccessToS3Bucket
+          - Action:
+            - kms:Decrypt
+            - kms:GenerateDataKey
+            - kms:Encrrypt
+            Effect: Allow
+            Resource: '*'
+            Sid: AllowAccessToKMSKey
+          - Action:
+            - logs:PutLogEvents
+            Effect: Allow
+            Resource: '*'
+          Version: '2012-10-17'
+        PolicyName: event-log-deliverystream-access-policy
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role'
+
+  rEmrEc2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref rEmrEc2Role
